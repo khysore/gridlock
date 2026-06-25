@@ -147,13 +147,13 @@ export default function RideScreen({ navigation, route: navRoute }) {
       );
 
       const text = generateAnnouncement(point);
-      await announce(text);
+      await announce(text); // waits for speech to fully finish
       setLastAnnouncementText(text);
       announcedIdsRef.current.add(point.id);
       setAnnouncedIds(new Set(announcedIdsRef.current));
 
-      // Wait 2 seconds before the next point
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Brief pause between points
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     simulationRef.current = false;

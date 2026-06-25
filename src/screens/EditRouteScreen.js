@@ -178,6 +178,16 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
     }
   };
 
+  const handleMovePoint = (index, direction) => {
+    setBlockerPoints((prev) => {
+      const next = [...prev];
+      const swapIndex = index + direction;
+      if (swapIndex < 0 || swapIndex >= next.length) return prev;
+      [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+      return next;
+    });
+  };
+
   const renderPointItem = ({ item, index }) => (
     <View style={styles.pointItem}>
       <View style={styles.pointBadge}>
@@ -191,6 +201,22 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
           {item.blockersNeeded} blocker{item.blockersNeeded !== 1 ? 's' : ''}
           {item.positionDescription ? `  ·  ${item.positionDescription}` : ''}
         </Text>
+      </View>
+      <View style={styles.reorderBtns}>
+        <TouchableOpacity
+          style={styles.reorderBtn}
+          onPress={() => handleMovePoint(index, -1)}
+          accessibilityLabel="Move up"
+        >
+          <Text style={styles.reorderBtnText}>▲</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.reorderBtn}
+          onPress={() => handleMovePoint(index, 1)}
+          accessibilityLabel="Move down"
+        >
+          <Text style={styles.reorderBtnText}>▼</Text>
+        </TouchableOpacity>
       </View>
       <TouchableOpacity
         style={styles.pointActionBtn}
@@ -424,5 +450,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.danger,
     fontWeight: 'bold',
+  },
+  reorderBtns: {
+    flexDirection: 'column',
+    marginRight: 4,
+  },
+  reorderBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  reorderBtnText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
   },
 });

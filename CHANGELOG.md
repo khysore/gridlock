@@ -5,6 +5,12 @@ Format: `[YYYY-MM-DD] — Description`
 
 ---
 
+## [2026-06-24] — Reorder blocker points + fix simulation speech overlap
+
+- `EditRouteScreen`: ▲ ▼ buttons on each blocker point row to reorder
+- `AnnouncementService`: `announce()` now returns a Promise that resolves via `onDone` — speech fully completes before simulation moves to next point
+- `RideScreen`: simulation gap reduced to 500ms (after speech finishes) instead of fixed 2s
+
 ## [2026-06-24] — Simulation mode added
 
 - `RideScreen`: new ⚡ Simulate button steps through all blocker points automatically

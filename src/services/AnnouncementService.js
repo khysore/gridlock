@@ -40,7 +40,8 @@ async function getBestVoice() {
   return _voiceId;
 }
 
-/** Speak the given text, interrupting any current speech. */
+/** Speak the given text, interrupting any current speech.
+ *  Returns a Promise that resolves when speech finishes (or errors). */
 export async function announce(text) {
   try {
     const speaking = await Speech.isSpeakingAsync();
@@ -51,11 +52,19 @@ export async function announce(text) {
   } catch {
     // isSpeakingAsync failed — just proceed to speak
   }
-  Speech.speak(text, {
-    language: 'en-US',
-    ...(await getBestVoice().then((v) => (v ? { voice: v } : {})).catch(() => ({}))),
-    rate: 0.9,
-    pitch: 1.0,
+
+  const voiceId = await getBestVoice().catch(() => null);
+
+  return new Promise((resolve) => {
+    Speech.speak(text, {
+      language: 'en-US',
+      ...(voiceId ? { voice: voiceId } : {}),
+      rate: 0.9,
+      pitch: 1.0,
+      onDone: resolve,
+      onError: resolve, // resolve on error so callers don't hang
+      onStopped: resolve,
+    });
   });
 }
 

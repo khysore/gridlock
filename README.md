@@ -13,6 +13,8 @@ A React Native (Expo) app for motorcycle ride leaders to plan routes, place bloc
 5. [Tech Stack](#tech-stack)
 6. [Local Development Setup](#local-development-setup)
 7. [Testing on iPhone (Expo Go)](#testing-on-iphone-expo-go)
+   - [Option A — LAN (same Wi-Fi)](#option-a--lan-same-wi-fi)
+   - [Option B — Tunnel (different networks)](#option-b--tunnel-different-networks)
 8. [Google Maps API Key](#google-maps-api-key)
 9. [User Guide](#user-guide)
 
@@ -152,7 +154,7 @@ Key state and refs:
 | `locationSubscriptionRef` | `useRef` | Holds the `expo-location` subscription so it can be removed on unmount |
 | `mapRef` | `useRef(MapView)` | Used to animate the map to follow the rider |
 
-Location polling: `accuracy: High`, `timeInterval: 3000 ms`, `distanceInterval: 15 m`.
+Location polling: `accuracy: BestForNavigation`, `timeInterval: 2000 ms`, `distanceInterval: 5 m`.
 
 On each `onLocationUpdate`:
 1. Animates the map to the new position.
@@ -170,10 +172,10 @@ A slide-up `Modal` with a `ScrollView` form. Fields:
 
 | Field | Default | Validation |
 |---|---|---|
-| Name | `""` | Required |
+| Name | `""` | Required (auto-filled from Overpass API on map tap) |
 | Position description | `""` | Optional |
 | Blockers needed | `1` | Integer ≥ 1 (stepper buttons) |
-| Trigger radius | `200` | Integer ≥ 30 m |
+| Trigger distance | `75` ft | Integer ≥ 1 ft; stored in feet, converted to metres at ride time |
 | Custom announcement | `""` | Optional; overrides auto-text |
 
 `useEffect` on `[visible, point]` resets all fields each time the modal opens.
@@ -199,7 +201,7 @@ All data lives under the key `@gridlock_routes`.
 | Export | Behaviour |
 |---|---|
 | `generateAnnouncement(point)` | Returns `point.customAnnouncement` if set, otherwise builds: `"Approaching {name}. {n} blocker(s) needed[ at {position}]."` |
-| `announce(text)` | Calls `Speech.stop()` then `Speech.speak()` at rate 0.85, en-US. |
+| `announce(text)` | Stops any current speech, then calls `Speech.speak()` with rate 0.9, en-US, and an `onDone` callback. Returns a Promise that resolves when speech fully completes (or errors/stops). Safe to `await` in async loops — simulation uses this to prevent overlap. |
 | `stopSpeech()` | Calls `Speech.stop()`. |
 
 ---
@@ -234,32 +236,44 @@ Implements the Haversine formula using Earth radius = 6 371 000 m. Returns the g
 
 | Concern | Package | Version |
 |---|---|---|
-| Framework | Expo | SDK 51 |
-| UI | React Native | 0.74.5 |
-| Navigation | React Navigation | v6 (native stack) |
-| Maps | react-native-maps | 1.14.0 |
-| Location | expo-location | ~17.0.1 |
-| Voice | expo-speech | ~12.0.2 |
-| Storage | @react-native-async-storage/async-storage | 1.23.1 |
-| UUIDs | expo-crypto | ~13.0.2 |
-| Screen awake | expo-keep-awake | ~13.0.2 |
-| Safe areas | react-native-safe-area-context | 4.10.5 |
+| Framework | Expo | SDK 54 |
+| UI | React Native | 0.81.5 |
+| Navigation | React Navigation | v7 (native stack) |
+| Maps | react-native-maps | 1.20.1 |
+| Location | expo-location | ~18.1.5 |
+| Voice | expo-speech | ~13.1.4 |
+| Storage | @react-native-async-storage/async-storage | 2.1.2 |
+| UUIDs | expo-crypto | ~14.1.4 |
+| Screen awake | expo-keep-awake | ~14.1.4 |
+| Safe areas | react-native-safe-area-context | 5.4.0 |
+| Reverse geocode | Overpass API (OpenStreetMap) | — (HTTP, no key) |
+| Tunnel (dev) | @expo/ngrok | ^4.1.0 (global install) |
 
 ---
 
 ## Local Development Setup
 
-```bash
-# 1. Install dependencies (first time only)
-npm install
+### Prerequisites
 
-# 2. Start dev server — shows a QR code
-npx expo start --lan
+- **Node.js** 20+ and npm
+- **Expo Go** (SDK 54) installed on your iPhone from the App Store
+- **@expo/ngrok** installed globally (required for tunnel mode):
+  ```powershell
+  npm install -g @expo/ngrok@^4.1.0
+  ```
+
+### First-time install
+
+```powershell
+npm install --legacy-peer-deps
 ```
 
-The `--lan` flag (combined with `$env:REACT_NATIVE_PACKAGER_HOSTNAME=<your-ip>`) ensures the QR code encodes your machine's LAN IP so a phone on the same network can connect.
+> `--legacy-peer-deps` is required due to peer dependency conflicts in the Expo SDK 54 dependency tree. Always use this flag when adding new packages too.
 
-A Windows Firewall rule for port 8081 is required — it was added with:
+### Windows Firewall rule (one-time, LAN mode only)
+
+Run once in an elevated PowerShell to allow Metro bundler traffic through the firewall:
+
 ```powershell
 New-NetFirewallRule -DisplayName "Expo Metro 8081" -Direction Inbound -Protocol TCP -LocalPort 8081 -Action Allow
 ```
@@ -268,13 +282,76 @@ New-NetFirewallRule -DisplayName "Expo Metro 8081" -Direction Inbound -Protocol 
 
 ## Testing on iPhone (Expo Go)
 
-1. Install **Expo Go** from the App Store.
-2. Connect your iPhone to the **same Wi-Fi network** as your PC.
-3. Run `npx expo start --lan` in the project directory.
-4. Open the iPhone Camera app → scan the QR code in the terminal → tap the banner.
-5. The app opens inside Expo Go and hot-reloads on every file save.
+### Option A — LAN (same Wi-Fi)
 
-> The server URL is `exp://10.0.0.248:8081` (your PC's LAN IP). If the Camera scan fails, open Expo Go → **Enter URL manually** and type that address.
+Use this when your iPhone and PC are on the **same Wi-Fi network** (home/office).
+
+```powershell
+# In the project directory:
+$env:REACT_NATIVE_PACKAGER_HOSTNAME="10.0.0.248"
+npx expo start --lan
+```
+
+- The QR code in the terminal encodes `exp://10.0.0.248:8081`.
+- Open the iPhone Camera app → scan → tap the banner, **or** open Expo Go → **Enter URL manually** → `exp://10.0.0.248:8081`.
+- Hot-reload fires on every file save.
+
+> **PC LAN IP**: `10.0.0.248`. If your IP changes, update the environment variable and re-scan.
+
+---
+
+### Option B — Tunnel (different networks / mobile data)
+
+Use this when the iPhone can't reach the PC directly (e.g. hotspot, different subnet, firewall blocking LAN).
+
+```powershell
+# In the project directory:
+npx expo start --tunnel
+```
+
+Expo will print a tunnel URL of the form:
+```
+exp://<random-slug>.exp.direct
+```
+
+Scan the QR code shown in the terminal, or open Expo Go → **Enter URL manually** and paste the URL.
+
+> **Tunnel requires** `@expo/ngrok@^4.1.0` installed globally (see Prerequisites above).  
+> The tunnel URL changes every time you restart the server — always re-scan the new QR code.
+
+**Last known tunnel URL (from a previous session):** `exp://vbtaef4-anonymous-8082.exp.direct`  
+*(This is shown for reference only — it will not work after the tunnel server is restarted.)*
+
+---
+
+### Restarting the dev server
+
+If the app shows a red error screen or loses connection:
+
+1. Press `Ctrl+C` in the terminal to stop Metro.
+2. Restart with either mode above.
+3. Re-scan the QR code on the iPhone (or re-enter the URL in Expo Go).
+4. If you see a **"Something went wrong"** screen in Expo Go, shake the iPhone → **Reload**.
+
+### Clearing the cache
+
+If changes aren't reflecting after reload:
+
+```powershell
+npx expo start --clear
+# or with tunnel:
+npx expo start --tunnel --clear
+```
+
+### Full clean reinstall
+
+If you see dependency errors or Metro crashes on startup:
+
+```powershell
+cmd /c rd /s /q node_modules
+npm install --legacy-peer-deps
+npx expo start --clear
+```
 
 ---
 
