@@ -5,16 +5,24 @@ import * as Speech from 'expo-speech';
  * Uses customAnnouncement if set; otherwise auto-generates from the point fields.
  */
 export function generateAnnouncement(point) {
-  if (point.customAnnouncement && point.customAnnouncement.trim()) {
-    return point.customAnnouncement.trim();
-  }
   const n = point.blockersNeeded;
   const word = n === 1 ? 'blocker' : 'blockers';
+  const position = point.positionDescription && point.positionDescription.trim();
+  const custom = point.customAnnouncement && point.customAnnouncement.trim();
+
+  // Always start with name + blockers needed
   let text = `Approaching ${point.name}. ${n} ${word} needed`;
-  if (point.positionDescription && point.positionDescription.trim()) {
-    text += ` at ${point.positionDescription.trim()}`;
+  if (position) {
+    text += ` at ${position}`;
   }
-  return `${text}.`;
+  text += '.';
+
+  // Append custom announcement after if set
+  if (custom) {
+    text += ` ${custom}`;
+  }
+
+  return text;
 }
 
 // Cached voice identifier — picked once at first use

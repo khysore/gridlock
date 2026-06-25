@@ -9,7 +9,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useKeepAwake } from 'expo-keep-awake';
 import { getDistance } from '../utils/geoUtils';
@@ -36,6 +36,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
   const [announcedIds, setAnnouncedIds] = useState(new Set());
   const [lastAnnouncementText, setLastAnnouncementText] = useState('');
   const [locationReady, setLocationReady] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
 
   // Use a ref for announcedIds so the location callback always has the latest value
   const announcedIdsRef = useRef(new Set());
@@ -85,14 +86,26 @@ export default function RideScreen({ navigation, route: navRoute }) {
     }
   };
 
-  const onLocationUpdate = async (location) => {
-    const { latitude, longitude } = location.coords;
+  // Format metres to a rider-friendly distance string (feet / miles)
+  const formatDistance = (metres) => {
+    const feet = metres * 3.28084;
+    if (feet < 1000) return `${Math.round(feet)} ft`;
+    return `${(feet / 5280).toFixed(1)} mi`;
+  };
 
-    // Pan the map to follow the rider
-    mapRef.current?.animateToRegion(
-      { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 },
-      400
-    );
+  const onLocationUpdate = async (location) => {
+    const { latitude, longitude, heading } = location.coords;
+
+    setUserLocation({ latitude, longitude });
+
+    // Pan + rotate map to follow the rider (skip during simulation)
+    if (!simulationRef.current) {
+      const bearing = heading != null && heading >= 0 ? heading : 0;
+      mapRef.current?.animateCamera(
+        { center: { latitude, longitude }, heading: bearing, zoom: 17, pitch: 0 },
+        { duration: 500 }
+      );
+    }
 
     // Check every un-announced blocker point for proximity
     for (const point of rideRoute.blockerPoints) {
@@ -206,6 +219,13 @@ export default function RideScreen({ navigation, route: navRoute }) {
   const announcedCount = announcedIds.size;
   const totalCount = rideRoute.blockerPoints.length;
 
+  // First unannounced point in route order — the current navigation target
+  const nextPoint = rideRoute.blockerPoints.find((p) => !announcedIds.has(p.id));
+  const nextDist =
+    nextPoint && userLocation
+      ? getDistance(userLocation.latitude, userLocation.longitude, nextPoint.latitude, nextPoint.longitude)
+      : null;
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -222,9 +242,27 @@ export default function RideScreen({ navigation, route: navRoute }) {
         initialRegion={getInitialRegion()}
         showsUserLocation
         showsMyLocationButton={false}
+        showsCompass
+        showsTraffic
       >
+        {/* Route line connecting all blocker points in order */}
+        {rideRoute.blockerPoints.length > 1 && (
+          <Polyline
+            coordinates={rideRoute.blockerPoints.map((p) => ({
+              latitude: p.latitude,
+              longitude: p.longitude,
+            }))}
+            strokeColor="rgba(66,133,244,0.75)"
+            strokeWidth={4}
+            lineDashPattern={[12, 6]}
+          />
+        )}
+
         {rideRoute.blockerPoints.map((point, index) => {
           const done = announcedIds.has(point.id);
+          const isNext = nextPoint && point.id === nextPoint.id;
+          // Next point = blue, announced = green, other pending = orange
+          const pinColor = done ? COLORS.success : isNext ? '#2196F3' : COLORS.warning;
           return (
             <Marker
               key={point.id}
@@ -240,7 +278,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
                   ? ` · ${point.positionDescription}`
                   : ''
               }`}
-              pinColor={done ? COLORS.success : COLORS.warning}
+              pinColor={pinColor}
             />
           );
         })}
@@ -258,16 +296,41 @@ export default function RideScreen({ navigation, route: navRoute }) {
             </Text>
           </View>
           <View style={styles.legendRow}>
+            <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
+            <Text style={styles.legendLabel}>Next</Text>
             <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
-            <Text style={styles.legendLabel}>Upcoming</Text>
+            <Text style={styles.legendLabel}>Ahead</Text>
             <View style={[styles.legendDot, { backgroundColor: COLORS.success }]} />
             <Text style={styles.legendLabel}>Done</Text>
           </View>
         </View>
       </SafeAreaView>
 
-      {/* ── ANNOUNCEMENT BANNER ── */}
-      <View style={styles.announcementBanner}>
+      {/* ── NAVIGATION INFO CARD ── */}
+      <View style={styles.infoCard}>
+        {/* Next stop row */}
+        <View style={styles.nextStopRow}>
+          <View style={[styles.nextDot, nextPoint ? styles.nextDotActive : styles.nextDotDone]} />
+          <View style={styles.nextStopInfo}>
+            <Text style={styles.nextStopLabel}>
+              {nextPoint ? 'NEXT STOP' : '✓ ROUTE COMPLETE'}
+            </Text>
+            {nextPoint && (
+              <Text style={styles.nextStopName} numberOfLines={1}>
+                {nextPoint.name}
+                {nextPoint.positionDescription ? `  ·  ${nextPoint.positionDescription}` : ''}
+              </Text>
+            )}
+          </View>
+          {nextDist != null && (
+            <Text style={styles.nextStopDist}>{formatDistance(nextDist)}</Text>
+          )}
+        </View>
+
+        {/* Divider */}
+        <View style={styles.infoCardDivider} />
+
+        {/* Last announcement / status */}
         {lastAnnouncementText ? (
           <>
             <Text style={styles.announcementLabel}>LAST ANNOUNCEMENT</Text>
@@ -276,11 +339,11 @@ export default function RideScreen({ navigation, route: navRoute }) {
         ) : (
           <>
             <Text style={styles.announcementLabel}>
-              {locationReady ? 'RIDE IN PROGRESS' : 'ACQUIRING LOCATION…'}
+              {locationReady ? 'RIDE IN PROGRESS' : 'ACQUIRING GPS…'}
             </Text>
             <Text style={styles.announcementText}>
               {locationReady
-                ? 'Announcements will play automatically when approaching intersections'
+                ? 'Announcements fire automatically at each intersection'
                 : 'Please wait while GPS is acquired'}
             </Text>
           </>
@@ -371,17 +434,63 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  /* Announcement banner */
-  announcementBanner: {
+  /* Navigation info card (next stop + last announcement) */
+  infoCard: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 90,
-    backgroundColor: 'rgba(26,26,46,0.88)',
-    marginHorizontal: 16,
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: 'rgba(10,10,30,0.92)',
+    marginHorizontal: 12,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(66,133,244,0.35)',
+  },
+  nextStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  nextDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    flexShrink: 0,
+  },
+  nextDotActive: {
+    backgroundColor: '#2196F3',
+  },
+  nextDotDone: {
+    backgroundColor: COLORS.success,
+  },
+  nextStopInfo: {
+    flex: 1,
+  },
+  nextStopLabel: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 1.1,
+  },
+  nextStopName: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  nextStopDist: {
+    color: '#4fc3f7',
+    fontSize: 17,
+    fontWeight: 'bold',
+    flexShrink: 0,
+  },
+  infoCardDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 10,
   },
   announcementLabel: {
     color: COLORS.accent,
@@ -391,10 +500,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   announcementText: {
-    color: COLORS.white,
-    fontSize: 15,
-    lineHeight: 21,
-    fontWeight: '500',
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '400',
   },
 
   /* Bottom controls */

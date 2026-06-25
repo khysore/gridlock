@@ -33,7 +33,7 @@ HomeScreen  →  RideScreen       →  (stop)  →  HomeScreen
 
 **EditRouteScreen** opens a full-screen map. The user types a route name, then taps anywhere on the map to place a blocker point. A modal (`BlockerPointModal`) collects the point details. Tapping an existing marker re-opens the modal to edit it. Saving the route writes it to AsyncStorage.
 
-**RideScreen** starts a GPS subscription (`expo-location`) that fires every 3 seconds or every 15 metres. On each update it runs the Haversine formula against every un-announced blocker point. When the rider is within a point's trigger radius, `expo-speech` reads the announcement aloud and the marker turns green. The screen stays awake via `expo-keep-awake`. The rider can replay the last announcement or stop the ride at any time.
+**RideScreen** starts a GPS subscription (`expo-location`) that fires every 2 seconds or every 5 metres. The map fills the screen and rotates with the rider's heading. A dashed blue polyline connects all blocker points in order so the rider can see the planned route at a glance. A floating info card shows the next stop name, position description, and live distance. On each GPS update the app runs the Haversine formula against every un-announced point; when within the trigger radius `expo-speech` fires the announcement and the marker turns green. The screen stays awake via `expo-keep-awake`. The rider can replay the last announcement, run a desk simulation of all points, or stop the ride at any time.
 
 ---
 
@@ -64,8 +64,8 @@ All routes are stored together under the single AsyncStorage key `@gridlock_rout
   name: string,                // intersection / location label
   positionDescription: string, // e.g. "NW corner"
   blockersNeeded: number,      // integer ≥ 1
-  triggerRadius: number,       // feet (default 10, min 1); converted to metres at runtime
-  customAnnouncement: string,  // overrides auto-generated text if set
+  triggerRadius: number,       // feet (default 75, min 1); converted to metres at runtime
+  customAnnouncement: string,  // appended to auto-generated text if set
 }
 ```
 
@@ -86,7 +86,7 @@ gridlock/
     ├── screens/
     │   ├── HomeScreen.js           Route list with Start / Edit / Delete actions
     │   ├── EditRouteScreen.js      Map-based route editor; tap map to place points
-    │   └── RideScreen.js           Live GPS tracking + voice announcements
+    │   └── RideScreen.js           Live GPS navigation with route polyline + voice announcements
     ├── components/
     │   └── BlockerPointModal.js    Bottom-sheet modal for adding/editing a blocker point
     ├── services/
@@ -148,19 +148,33 @@ Key state and refs:
 
 | Name | Type | Purpose |
 |---|---|---|
-| `announcedIdsRef` | `useRef(Set)` | Tracks which point IDs have been announced; used inside the location callback to avoid stale closure |
-| `announcedIds` | `useState(Set)` | Mirror of the ref — triggers re-render to update marker colors |
+| `announcedIdsRef` | `useRef(Set)` | Tracks announced point IDs; used in the location callback to avoid stale closure |
+| `announcedIds` | `useState(Set)` | Mirror of the ref — triggers re-render to update marker colours |
+| `userLocation` | `useState` | Latest `{latitude, longitude}` — used to compute live distance to next stop |
 | `lastAnnouncementText` | `useState(string)` | Stores the last spoken text for the Repeat button |
 | `locationSubscriptionRef` | `useRef` | Holds the `expo-location` subscription so it can be removed on unmount |
-| `mapRef` | `useRef(MapView)` | Used to animate the map to follow the rider |
+| `mapRef` | `useRef(MapView)` | Used to animate/rotate the map camera |
+| `simulationRef` | `useRef(boolean)` | Cancellation flag for the simulation loop |
 
 Location polling: `accuracy: BestForNavigation`, `timeInterval: 2000 ms`, `distanceInterval: 5 m`.
 
 On each `onLocationUpdate`:
-1. Animates the map to the new position.
-2. Loops through all blocker points not yet in `announcedIdsRef`.
-3. Calls `getDistance()` (Haversine) for each.
-4. If `dist ≤ point.triggerRadius`, generates and speaks the announcement, adds the ID to both the ref and state.
+1. Updates `userLocation` state.
+2. Calls `animateCamera()` with the current bearing so the map rotates to face forward.
+3. Loops through all un-announced blocker points, runs Haversine distance.
+4. If `dist ≤ triggerRadius (feet → metres)`, calls `await announce(text)` and marks the point done.
+
+**Map overlays:**
+- `Polyline` — dashed blue line connecting all blocker points in route order
+- Blue pin = next stop, orange = other pending, green = announced
+- `showsTraffic` and `showsCompass` enabled
+
+**Navigation info card** (floating above controls):
+- Next stop name + position description
+- Live distance to next stop (`formatDistance()` converts metres → ft / mi)
+- Last announcement text below a divider
+
+**Bottom controls:** 🔁 Repeat | ⚡ Simulate / Stop Sim | ■ Stop Ride
 
 On unmount (or Stop Ride): removes the location subscription and stops any active speech.
 
@@ -176,7 +190,7 @@ A slide-up `Modal` with a `ScrollView` form. Fields:
 | Position description | `""` | Optional |
 | Blockers needed | `1` | Integer ≥ 1 (stepper buttons) |
 | Trigger distance | `75` ft | Integer ≥ 1 ft; stored in feet, converted to metres at ride time |
-| Custom announcement | `""` | Optional; overrides auto-text |
+| Custom announcement | `""` | Optional; **appended** after auto-generated text |
 
 `useEffect` on `[visible, point]` resets all fields each time the modal opens.
 
@@ -200,7 +214,7 @@ All data lives under the key `@gridlock_routes`.
 
 | Export | Behaviour |
 |---|---|
-| `generateAnnouncement(point)` | Returns `point.customAnnouncement` if set, otherwise builds: `"Approaching {name}. {n} blocker(s) needed[ at {position}]."` |
+| `generateAnnouncement(point)` | Always builds: `"Approaching {name}. {n} blocker(s) needed[ at {position}]."` If `customAnnouncement` is set, appends it after the auto-text. |
 | `announce(text)` | Stops any current speech, then calls `Speech.speak()` with rate 0.9, en-US, and an `onDone` callback. Returns a Promise that resolves when speech fully completes (or errors/stops). Safe to `await` in async loops — simulation uses this to prevent overlap. |
 | `stopSpeech()` | Calls `Speech.stop()`. |
 
@@ -396,11 +410,15 @@ For Google Maps on iOS as well, also enable **Maps SDK for iOS** and add the key
 
 1. Tap **▶ Start Ride** on any saved route.
 2. Grant location permission if prompted.
-3. Ride normally — announcements fire automatically as you approach each point.
-   - **Orange marker** = not yet announced
-   - **Green marker** = announced
-4. Tap **🔁 Repeat** to replay the last announcement.
-5. Tap **■ Stop** to end the ride and return to the home screen.
+3. The map opens with a **dashed blue route line** and coloured pins:
+   - **Blue** = your next stop (current target)
+   - **Orange** = further pending stops
+   - **Green** = already announced
+4. The **navigation card** at the bottom shows the next stop name and your live distance to it.
+5. Ride normally — announcements fire automatically as you approach each point.
+6. Tap **🔁 Repeat** to replay the last announcement.
+7. Tap **⚡ Simulate** to step through all points at your desk for pre-ride testing.
+8. Tap **■ Stop** to end the ride and return to the home screen.
 
 ### Announcement format (auto-generated)
 

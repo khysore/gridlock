@@ -5,6 +5,20 @@ Format: `[YYYY-MM-DD] — Description`
 
 ---
 
+## [2026-06-24] — GPS navigation overlay on ride screen
+
+- `RideScreen`: full-screen map now shows a **dashed blue polyline** connecting all blocker points in route order
+- Map **rotates with heading** (bearing) during a live ride so it always faces forward like a real GPS
+- **Next stop card** overlays the bottom of the map — shows next point name, position description, and live distance (ft / mi)
+- Pin colours: blue = next stop, orange = other upcoming, green = announced/done
+- `showsTraffic` and `showsCompass` enabled on the map
+
+## [2026-06-24] — Announcement always reads position + appends custom text
+
+- `AnnouncementService`: `generateAnnouncement()` now always reads auto-generated text (name + blockers + position description)
+- Custom announcement is **appended** after the auto-text rather than replacing it
+- Example: *"Approaching Oak St & Main Ave. 2 blockers needed at northwest corner. Watch for oncoming traffic."
+
 ## [2026-06-24] — Reorder blocker points + fix simulation speech overlap
 
 - `EditRouteScreen`: ▲ ▼ buttons on each blocker point row to reorder
