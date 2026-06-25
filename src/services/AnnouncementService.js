@@ -17,12 +17,44 @@ export function generateAnnouncement(point) {
   return `${text}.`;
 }
 
-/** Speak the given text, stopping any current speech first. */
-export function announce(text) {
-  Speech.stop();
+// Cached voice identifier — picked once at first use
+let _voiceId = null;
+
+/**
+ * Pick the best available English voice on this device.
+ * Priority: premium > enhanced > any en-US > default.
+ */
+async function getBestVoice() {
+  if (_voiceId !== undefined && _voiceId !== null) return _voiceId;
+  try {
+    const voices = await Speech.getAvailableVoicesAsync();
+    const en = voices.filter((v) => v.language && v.language.startsWith('en'));
+
+    const premium = en.find((v) => v.quality === 'Enhanced' || v.identifier?.includes('premium') || v.identifier?.includes('enhanced'));
+    const usVoice = en.find((v) => v.language === 'en-US');
+    const picked = premium || usVoice || en[0] || null;
+    _voiceId = picked ? picked.identifier : null;
+  } catch {
+    _voiceId = null;
+  }
+  return _voiceId;
+}
+
+/** Speak the given text, interrupting any current speech. */
+export async function announce(text) {
+  try {
+    const speaking = await Speech.isSpeakingAsync();
+    if (speaking) {
+      Speech.stop();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  } catch {
+    // isSpeakingAsync failed — just proceed to speak
+  }
   Speech.speak(text, {
     language: 'en-US',
-    rate: 0.85,
+    ...(await getBestVoice().then((v) => (v ? { voice: v } : {})).catch(() => ({}))),
+    rate: 0.9,
     pitch: 1.0,
   });
 }

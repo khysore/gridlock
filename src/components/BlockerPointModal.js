@@ -26,7 +26,7 @@ export default function BlockerPointModal({ visible, point, onSave, onCancel }) 
   const [name, setName] = useState('');
   const [positionDescription, setPositionDescription] = useState('');
   const [blockersNeeded, setBlockersNeeded] = useState(1);
-  const [triggerRadius, setTriggerRadius] = useState(200);
+  const [triggerRadius, setTriggerRadius] = useState(75);
   const [customAnnouncement, setCustomAnnouncement] = useState('');
 
   // Populate fields when modal opens
@@ -35,7 +35,7 @@ export default function BlockerPointModal({ visible, point, onSave, onCancel }) 
       setName(point?.name ?? '');
       setPositionDescription(point?.positionDescription ?? '');
       setBlockersNeeded(point?.blockersNeeded ?? 1);
-      setTriggerRadius(point?.triggerRadius ?? 200);
+      setTriggerRadius(point?.triggerRadius ?? 75);
       setCustomAnnouncement(point?.customAnnouncement ?? '');
     }
   }, [visible, point]);
@@ -53,7 +53,7 @@ export default function BlockerPointModal({ visible, point, onSave, onCancel }) 
       name: name.trim(),
       positionDescription: positionDescription.trim(),
       blockersNeeded: Math.max(1, blockersNeeded),
-      triggerRadius: isNaN(radius) || radius < 30 ? 200 : radius,
+      triggerRadius: isNaN(radius) || radius < 1 ? 75 : radius,
       customAnnouncement: customAnnouncement.trim(),
     });
   };
@@ -120,16 +120,16 @@ export default function BlockerPointModal({ visible, point, onSave, onCancel }) 
             </View>
 
             {/* Trigger distance */}
-            <Text style={styles.label}>Trigger Distance (metres)</Text>
+            <Text style={styles.label}>Trigger Distance (feet)</Text>
             <Text style={styles.hint}>
-              Announcement plays when you are within this distance of the point. Default 200 m (~650 ft).
+              Announcement plays when you are within this distance of the point. Default 75 ft.
             </Text>
             <TextInput
               style={styles.input}
               value={String(triggerRadius)}
               onChangeText={(t) => setTriggerRadius(t)}
               keyboardType="numeric"
-              placeholder="200"
+              placeholder="75"
               placeholderTextColor={COLORS.textSecondary}
             />
 

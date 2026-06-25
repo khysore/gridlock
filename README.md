@@ -62,7 +62,7 @@ All routes are stored together under the single AsyncStorage key `@gridlock_rout
   name: string,                // intersection / location label
   positionDescription: string, // e.g. "NW corner"
   blockersNeeded: number,      // integer ≥ 1
-  triggerRadius: number,       // metres (default 200, min 30)
+  triggerRadius: number,       // feet (default 10, min 1); converted to metres at runtime
   customAnnouncement: string,  // overrides auto-generated text if set
 }
 ```

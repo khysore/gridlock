@@ -35,6 +35,7 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPoint, setEditingPoint] = useState(null);
   const [pendingCoordinate, setPendingCoordinate] = useState(null);
+  const [suggestedName, setSuggestedName] = useState('');
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -71,11 +72,43 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
     }
   };
 
-  // Tap on blank map area → add new point
-  const handleMapPress = (event) => {
-    setPendingCoordinate(event.nativeEvent.coordinate);
+  // Tap on blank map area → reverse geocode then open modal
+  const handleMapPress = async (event) => {
+    const coord = event.nativeEvent.coordinate;
+    setPendingCoordinate(coord);
     setEditingPoint(null);
-    setModalVisible(true);
+    setSuggestedName('');
+    setModalVisible(true); // open immediately; name fills in async
+
+    try {
+      const { latitude: lat, longitude: lon } = coord;
+
+      // Overpass: find all named roads within 40 m of the tap point
+      const query = `[out:json];way(around:40,${lat},${lon})[highway][name];out tags;`;
+      const resp = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+      const json = await resp.json();
+      const roads = json?.elements ?? [];
+
+      // Collect unique road names, closest first (order from API is proximity-based)
+      const names = [];
+      for (const el of roads) {
+        const n = el.tags?.name;
+        if (n && !names.includes(n)) names.push(n);
+        if (names.length === 2) break;
+      }
+
+      if (names.length >= 2) {
+        setSuggestedName(`${names[0]} & ${names[1]}`);
+      } else if (names.length === 1) {
+        setSuggestedName(names[0]);
+      }
+    } catch {
+      // silent fallback — user types manually
+    }
   };
 
   // Tap on existing marker → edit that point
@@ -104,12 +137,14 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
     setModalVisible(false);
     setEditingPoint(null);
     setPendingCoordinate(null);
+    setSuggestedName('');
   };
 
   const handleModalCancel = () => {
     setModalVisible(false);
     setEditingPoint(null);
     setPendingCoordinate(null);
+    setSuggestedName('');
   };
 
   const handleDeletePoint = (pointId) => {
@@ -249,7 +284,7 @@ export default function EditRouteScreen({ navigation, route: navRoute }) {
       {/* Add/edit point modal */}
       <BlockerPointModal
         visible={modalVisible}
-        point={editingPoint}
+        point={editingPoint ?? (suggestedName ? { name: suggestedName } : null)}
         onSave={handleModalSave}
         onCancel={handleModalCancel}
       />

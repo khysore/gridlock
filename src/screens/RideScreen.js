@@ -63,13 +63,19 @@ export default function RideScreen({ navigation, route: navRoute }) {
 
     locationSubscriptionRef.current = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 3000,     // at most every 3 seconds
-        distanceInterval: 15,   // or every 15 metres moved
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 2000,     // at most every 2 seconds
+        distanceInterval: 5,    // or every 5 metres moved
       },
       onLocationUpdate
     );
     setLocationReady(true);
+
+    // Announce ride start so the rider can confirm audio is working
+    const n = rideRoute.blockerPoints.length;
+    const startText = `Ride started. ${n} blocker point${n !== 1 ? 's' : ''} loaded.`;
+    announce(startText);
+    setLastAnnouncementText(startText);
   };
 
   const stopTracking = () => {
@@ -79,7 +85,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
     }
   };
 
-  const onLocationUpdate = (location) => {
+  const onLocationUpdate = async (location) => {
     const { latitude, longitude } = location.coords;
 
     // Pan the map to follow the rider
@@ -99,9 +105,11 @@ export default function RideScreen({ navigation, route: navRoute }) {
         point.longitude
       );
 
-      if (dist <= (point.triggerRadius ?? 200)) {
+      // triggerRadius is stored in feet; getDistance returns metres
+      const triggerMetres = (point.triggerRadius ?? 75) * 0.3048;
+      if (dist <= triggerMetres) {
         const text = generateAnnouncement(point);
-        announce(text);
+        await announce(text);
         setLastAnnouncementText(text);
         announcedIdsRef.current.add(point.id);
         // Spread into a new Set so React re-renders the markers
@@ -110,9 +118,56 @@ export default function RideScreen({ navigation, route: navRoute }) {
     }
   };
 
+  const [simulating, setSimulating] = useState(false);
+  const simulationRef = useRef(false);
+
+  const handleSimulate = async () => {
+    const remaining = rideRoute.blockerPoints.filter(
+      (p) => !announcedIdsRef.current.has(p.id)
+    );
+    if (remaining.length === 0) {
+      Alert.alert('Simulation Done', 'All points have already been announced.');
+      return;
+    }
+    setSimulating(true);
+    simulationRef.current = true;
+
+    for (const point of remaining) {
+      if (!simulationRef.current) break;
+
+      // Pan map to this point
+      mapRef.current?.animateToRegion(
+        {
+          latitude: point.latitude,
+          longitude: point.longitude,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        },
+        600
+      );
+
+      const text = generateAnnouncement(point);
+      await announce(text);
+      setLastAnnouncementText(text);
+      announcedIdsRef.current.add(point.id);
+      setAnnouncedIds(new Set(announcedIdsRef.current));
+
+      // Wait 2 seconds before the next point
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    simulationRef.current = false;
+    setSimulating(false);
+  };
+
+  const handleStopSimulation = () => {
+    simulationRef.current = false;
+    setSimulating(false);
+  };
+
   const handleRepeat = () => {
     if (lastAnnouncementText) {
-      announce(lastAnnouncementText);
+      announce(lastAnnouncementText); // async, fire-and-forget is fine here
     } else {
       Alert.alert(
         'Nothing to Repeat',
@@ -244,6 +299,15 @@ export default function RideScreen({ navigation, route: navRoute }) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.ctrlBtn, simulating ? styles.simActiveBtn : styles.simBtn]}
+          onPress={simulating ? handleStopSimulation : handleSimulate}
+          accessibilityLabel="Simulate ride"
+        >
+          <Text style={styles.ctrlBtnIcon}>{simulating ? '⏹' : '⚡'}</Text>
+          <Text style={styles.ctrlBtnLabel}>{simulating ? 'Stop Sim' : 'Simulate'}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.ctrlBtn, styles.stopBtn]}
           onPress={handleStop}
           accessibilityLabel="Stop ride"
@@ -358,6 +422,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.25)',
+  },
+  simBtn: {
+    backgroundColor: '#5c35a8',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  simActiveBtn: {
+    backgroundColor: '#8a5cf6',
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   stopBtn: {
     backgroundColor: COLORS.danger,
