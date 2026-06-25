@@ -37,11 +37,14 @@ export default function RideScreen({ navigation, route: navRoute }) {
   const [lastAnnouncementText, setLastAnnouncementText] = useState('');
   const [locationReady, setLocationReady] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [isFollowing, setIsFollowing] = useState(true);
 
   // Use a ref for announcedIds so the location callback always has the latest value
   const announcedIdsRef = useRef(new Set());
   const locationSubscriptionRef = useRef(null);
   const mapRef = useRef(null);
+  const isFollowingRef = useRef(true);   // ref copy so callbacks read current value
+  const lastHeadingRef = useRef(null);   // for heading smoothing
 
   useEffect(() => {
     startTracking();
@@ -98,12 +101,20 @@ export default function RideScreen({ navigation, route: navRoute }) {
 
     setUserLocation({ latitude, longitude });
 
-    // Pan + rotate map to follow the rider (skip during simulation)
-    if (!simulationRef.current) {
-      const bearing = heading != null && heading >= 0 ? heading : 0;
+    // Follow the rider unless they manually panned the map or simulation is running
+    if (isFollowingRef.current && !simulationRef.current) {
+      // Smooth heading: only update bearing if it changed by more than 5 degrees
+      const rawBearing = heading != null && heading >= 0 ? heading : (lastHeadingRef.current ?? 0);
+      const prev = lastHeadingRef.current;
+      const smoothBearing =
+        prev == null || Math.abs(rawBearing - prev) > 5
+          ? rawBearing
+          : prev;
+      lastHeadingRef.current = smoothBearing;
+
       mapRef.current?.animateCamera(
-        { center: { latitude, longitude }, heading: bearing, zoom: 17, pitch: 0 },
-        { duration: 500 }
+        { center: { latitude, longitude }, heading: smoothBearing, zoom: 17, pitch: 0 },
+        { duration: 400 }
       );
     }
 
@@ -178,6 +189,30 @@ export default function RideScreen({ navigation, route: navRoute }) {
     setSimulating(false);
   };
 
+  const handleRecenter = () => {
+    isFollowingRef.current = true;
+    setIsFollowing(true);
+    if (userLocation) {
+      mapRef.current?.animateCamera(
+        {
+          center: userLocation,
+          heading: lastHeadingRef.current ?? 0,
+          zoom: 17,
+          pitch: 0,
+        },
+        { duration: 600 }
+      );
+    }
+  };
+
+  const handleMapPanDrag = () => {
+    // User touched the map — pause auto-follow
+    if (isFollowingRef.current) {
+      isFollowingRef.current = false;
+      setIsFollowing(false);
+    }
+  };
+
   const handleRepeat = () => {
     if (lastAnnouncementText) {
       announce(lastAnnouncementText); // async, fire-and-forget is fine here
@@ -240,6 +275,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
         style={StyleSheet.absoluteFillObject}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={getInitialRegion()}
+        onPanDrag={handleMapPanDrag}
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass
@@ -305,6 +341,18 @@ export default function RideScreen({ navigation, route: navRoute }) {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* ── RECENTER BUTTON (shown when user panned away) ── */}
+      {!isFollowing && (
+        <TouchableOpacity
+          style={styles.recenterBtn}
+          onPress={handleRecenter}
+          accessibilityLabel="Recenter map on my location"
+        >
+          <Text style={styles.recenterIcon}>📍</Text>
+          <Text style={styles.recenterLabel}>Recenter</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── NAVIGATION INFO CARD ── */}
       <View style={styles.infoCard}>
@@ -432,6 +480,30 @@ const styles = StyleSheet.create({
   legendLabel: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 11,
+  },
+
+  /* Recenter button */
+  recenterBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 200,
+    backgroundColor: 'rgba(10,10,30,0.92)',
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  recenterIcon: {
+    fontSize: 16,
+  },
+  recenterLabel: {
+    color: '#4fc3f7',
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   /* Navigation info card (next stop + last announcement) */

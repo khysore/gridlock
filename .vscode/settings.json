@@ -1,0 +1,15 @@
+{
+  // Stop VS Code's TypeScript server from treating tsconfig.json files
+  // inside node_modules as separate projects (causes spurious compile errors
+  // from packages like expo-speech and expo-location whose devDependencies
+  // are not installed in this workspace).
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+
+  // Exclude node_modules from file watching and search to keep VS Code fast.
+  "files.watcherExclude": {
+    "**/node_modules/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true
+  }
+}
