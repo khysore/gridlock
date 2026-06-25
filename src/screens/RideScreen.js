@@ -98,30 +98,6 @@ export default function RideScreen({ navigation, route: navRoute }) {
     return `${(feet / 5280).toFixed(1)} mi`;
   };
 
-  // Move the camera so the rider appears in the lower-third of the screen,
-  // showing more road ahead. Offset center ~150m forward in the direction of travel.
-  const getCameraCenter = (latitude, longitude, bearingDeg) => {
-    const OFFSET_METRES = 150;
-    const R = 6371000;
-    const bearingRad = (bearingDeg * Math.PI) / 180;
-    const latRad = (latitude * Math.PI) / 180;
-    const newLatRad =
-      Math.asin(
-        Math.sin(latRad) * Math.cos(OFFSET_METRES / R) +
-        Math.cos(latRad) * Math.sin(OFFSET_METRES / R) * Math.cos(bearingRad)
-      );
-    const newLonRad =
-      ((longitude * Math.PI) / 180) +
-      Math.atan2(
-        Math.sin(bearingRad) * Math.sin(OFFSET_METRES / R) * Math.cos(latRad),
-        Math.cos(OFFSET_METRES / R) - Math.sin(latRad) * Math.sin(newLatRad)
-      );
-    return {
-      latitude: (newLatRad * 180) / Math.PI,
-      longitude: (newLonRad * 180) / Math.PI,
-    };
-  };
-
   const onLocationUpdate = async (location) => {
     const { latitude, longitude, heading, speed } = location.coords;
 
@@ -138,11 +114,52 @@ export default function RideScreen({ navigation, route: navRoute }) {
           : prev;
       lastHeadingRef.current = smoothBearing;
 
-      // Offset center ahead of the rider so they appear in the lower third
-      const center = getCameraCenter(latitude, longitude, smoothBearing);
+      // Distance to next unannounced point (used for zoom + offset)
+      const nextPt = rideRoute.blockerPoints.find(
+        (p) => !announcedIdsRef.current.has(p.id)
+      );
+      const distToNext = nextPt
+        ? getDistance(latitude, longitude, nextPt.latitude, nextPt.longitude)
+        : null;
+
+      // Dynamic zoom: 15 when far away, ramps to 19 within 150m of the turn
+      // Mirrors what Google Maps does approaching an intersection
+      let zoom = 15;
+      if (distToNext != null) {
+        if (distToNext > 400)      zoom = 15;
+        else if (distToNext > 200) zoom = 16;
+        else if (distToNext > 100) zoom = 17;
+        else if (distToNext > 50)  zoom = 18;
+        else                       zoom = 19;
+      }
+
+      // Lookahead offset: shrink as we near a turn so the intersection stays centred
+      const offsetMetres = distToNext != null
+        ? Math.min(150, Math.max(20, distToNext * 0.4))
+        : 150;
+      const OFFSET_METRES_DYNAMIC = offsetMetres;
+
+      // Recalculate center using dynamic offset
+      const R = 6371000;
+      const bearingRad = (smoothBearing * Math.PI) / 180;
+      const latRad = (latitude * Math.PI) / 180;
+      const newLatRad = Math.asin(
+        Math.sin(latRad) * Math.cos(OFFSET_METRES_DYNAMIC / R) +
+        Math.cos(latRad) * Math.sin(OFFSET_METRES_DYNAMIC / R) * Math.cos(bearingRad)
+      );
+      const newLonRad =
+        ((longitude * Math.PI) / 180) +
+        Math.atan2(
+          Math.sin(bearingRad) * Math.sin(OFFSET_METRES_DYNAMIC / R) * Math.cos(latRad),
+          Math.cos(OFFSET_METRES_DYNAMIC / R) - Math.sin(latRad) * Math.sin(newLatRad)
+        );
+      const center = {
+        latitude: (newLatRad * 180) / Math.PI,
+        longitude: (newLonRad * 180) / Math.PI,
+      };
 
       mapRef.current?.animateCamera(
-        { center, heading: smoothBearing, zoom: 17, pitch: 0 },
+        { center, heading: smoothBearing, zoom, pitch: 0 },
         { duration: 400 }
       );
     }
@@ -234,7 +251,25 @@ export default function RideScreen({ navigation, route: navRoute }) {
     setIsFollowing(true);
     if (userLocation) {
       const bearing = lastHeadingRef.current ?? 0;
-      const center = getCameraCenter(userLocation.latitude, userLocation.longitude, bearing);
+      // 150m lookahead offset so rider appears in lower third
+      const OFFSET = 150;
+      const R = 6371000;
+      const bRad = (bearing * Math.PI) / 180;
+      const latRad = (userLocation.latitude * Math.PI) / 180;
+      const newLatRad = Math.asin(
+        Math.sin(latRad) * Math.cos(OFFSET / R) +
+        Math.cos(latRad) * Math.sin(OFFSET / R) * Math.cos(bRad)
+      );
+      const newLonRad =
+        ((userLocation.longitude * Math.PI) / 180) +
+        Math.atan2(
+          Math.sin(bRad) * Math.sin(OFFSET / R) * Math.cos(latRad),
+          Math.cos(OFFSET / R) - Math.sin(latRad) * Math.sin(newLatRad)
+        );
+      const center = {
+        latitude: (newLatRad * 180) / Math.PI,
+        longitude: (newLonRad * 180) / Math.PI,
+      };
       mapRef.current?.animateCamera(
         { center, heading: bearing, zoom: 17, pitch: 0 },
         { duration: 600 }

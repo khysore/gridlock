@@ -5,6 +5,13 @@ Format: `[YYYY-MM-DD] — Description`
 
 ---
 
+## [2026-06-24] — Route sharing (export / import)
+
+- `HomeScreen`: each route card has a new ⬆ Share button — serialises the route to a `.gridlock` JSON file and opens the iOS share sheet (AirDrop, Messages, email, etc.)
+- `HomeScreen`: new **⬇ Import Route** button at the bottom — opens a document picker, reads the file, validates it, assigns a fresh UUID, and saves to local storage
+- Duplicate detection: warns before importing a route with the same name and point count
+- New packages: `expo-sharing`, `expo-file-system`, `expo-document-picker` (all SDK 54 compatible)
+
 ## [2026-06-24] — GPS navigation overlay on ride screen
 
 - `RideScreen`: full-screen map now shows a **dashed blue polyline** connecting all blocker points in route order

@@ -10,7 +10,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Crypto from 'expo-crypto';
-import { getRoutes, deleteRoute } from '../services/StorageService';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker';
+import { getRoutes, deleteRoute, saveRoute } from '../services/StorageService';
 import COLORS from '../theme/colors';
 
 export default function HomeScreen({ navigation }) {
@@ -67,6 +70,98 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  const handleShare = async (route) => {
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing Not Available', 'Sharing is not supported on this device.');
+        return;
+      }
+      const json = JSON.stringify(route, null, 2);
+      // Sanitise the filename
+      const safeName = route.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const path = `${FileSystem.cacheDirectory}${safeName}.gridlock`;
+      await FileSystem.writeAsStringAsync(path, json, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(path, {
+        mimeType: 'application/json',
+        dialogTitle: `Share route: ${route.name}`,
+        UTI: 'public.json',
+      });
+    } catch (e) {
+      Alert.alert('Share Failed', 'Could not share this route.');
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'public.json', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset) return;
+
+      const text = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      let imported;
+      try {
+        imported = JSON.parse(text);
+      } catch {
+        Alert.alert('Invalid File', 'This file does not appear to be a valid GridLock route.');
+        return;
+      }
+
+      // Validate minimum required fields
+      if (!imported.name || !Array.isArray(imported.blockerPoints)) {
+        Alert.alert('Invalid File', 'This file does not contain a recognisable GridLock route.');
+        return;
+      }
+
+      // Assign a fresh ID so it doesn't collide with an existing route
+      const fresh = {
+        ...imported,
+        id: Crypto.randomUUID(),
+        importedAt: new Date().toISOString(),
+      };
+
+      const existing = await getRoutes();
+      const duplicate = existing.find(
+        (r) => r.name === fresh.name && r.blockerPoints.length === fresh.blockerPoints.length
+      );
+
+      if (duplicate) {
+        Alert.alert(
+          'Route Already Exists',
+          `You already have a route called "${fresh.name}" with the same number of points. Import anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Import',
+              onPress: async () => {
+                await saveRoute(fresh);
+                const updated = await getRoutes();
+                setRoutes(updated);
+                Alert.alert('Imported', `"${fresh.name}" has been added to your routes.`);
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      await saveRoute(fresh);
+      const updated = await getRoutes();
+      setRoutes(updated);
+      Alert.alert('Imported', `"${fresh.name}" has been added to your routes.`);
+    } catch (e) {
+      Alert.alert('Import Failed', 'Could not read the selected file.');
+    }
+  };
+
   const renderItem = ({ item }) => {
     const count = item.blockerPoints?.length ?? 0;
     return (
@@ -104,6 +199,14 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.actionBtn, styles.shareBtn]}
+            onPress={() => handleShare(item)}
+            accessibilityLabel={`Share ${item.name}`}
+          >
+            <Text style={styles.shareBtnText}>⬆</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.actionBtn, styles.deleteBtn]}
             onPress={() => handleDelete(item)}
             accessibilityLabel={`Delete ${item.name}`}
@@ -138,6 +241,10 @@ export default function HomeScreen({ navigation }) {
 
       <TouchableOpacity style={styles.fab} onPress={handleNewRoute}>
         <Text style={styles.fabText}>+ New Route</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.importBtn} onPress={handleImport}>
+        <Text style={styles.importBtnText}>⬇  Import Route</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -254,9 +361,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  shareBtn: {
+    backgroundColor: '#f0f4ff',
+    borderWidth: 1.5,
+    borderColor: '#4a90d9',
+    paddingHorizontal: 12,
+  },
+  shareBtnText: {
+    color: '#4a90d9',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 72,
     left: 16,
     right: 16,
     backgroundColor: COLORS.accent,
@@ -274,5 +392,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 0.3,
+  },
+  importBtn: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.primaryLight,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  importBtnText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

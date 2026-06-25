@@ -29,7 +29,7 @@ HomeScreen  →  EditRouteScreen  →  (save)  →  HomeScreen
 HomeScreen  →  RideScreen       →  (stop)  →  HomeScreen
 ```
 
-**HomeScreen** loads all saved routes from device storage and displays them in a list. Each card shows the route name, how many blocker points it has, and buttons to Start Ride, Edit, or Delete.
+**HomeScreen** loads all saved routes from device storage and displays them in a list. Each card shows the route name, how many blocker points it has, and buttons to Start Ride, Edit, Share, or Delete. Routes can be exported via the iOS share sheet and imported from a `.gridlock` file shared by another rider.
 
 **EditRouteScreen** opens a full-screen map. The user types a route name, then taps anywhere on the map to place a blocker point. A modal (`BlockerPointModal`) collects the point details. Tapping an existing marker re-opens the modal to edit it. Saving the route writes it to AsyncStorage.
 
@@ -260,6 +260,9 @@ Implements the Haversine formula using Earth radius = 6 371 000 m. Returns the g
 | UUIDs | expo-crypto | ~14.1.4 |
 | Screen awake | expo-keep-awake | ~14.1.4 |
 | Safe areas | react-native-safe-area-context | 5.4.0 |
+| Sharing | expo-sharing | ~13.0.1 |
+| File system | expo-file-system | ~18.1.5 |
+| Document picker | expo-document-picker | ~13.0.2 |
 | Reverse geocode | Overpass API (OpenStreetMap) | — (HTTP, no key) |
 | Tunnel (dev) | @expo/ngrok | ^4.1.0 (global install) |
 
@@ -405,6 +408,15 @@ For Google Maps on iOS as well, also enable **Maps SDK for iOS** and add the key
    - **Custom Announcement** *(optional)* — leave blank to auto-generate
 5. Tap **Save Point**. Repeat for each intersection.
 6. Tap **Save** (top-right) to persist the route.
+
+### Sharing a route
+
+1. Tap the **⬆ Share** button on any route card.
+2. The route is exported as a `.gridlock` file (plain JSON) and the iOS share sheet opens.
+3. Share via **AirDrop** for instant phone-to-phone transfer, or send via Messages, Email, Slack, etc.
+4. The recipient taps the file on their phone — iOS offers to open it in GridLock.
+5. Alternatively, tap **⬇ Import Route** on the home screen and pick the file from Files / Downloads.
+6. A fresh ID is assigned so the imported route never collides with existing ones.
 
 ### Starting a ride
 
