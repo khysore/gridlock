@@ -45,12 +45,14 @@ export default function RideScreen({ navigation, route: navRoute }) {
   const mapRef = useRef(null);
   const isFollowingRef = useRef(true);   // ref copy so callbacks read current value
   const lastHeadingRef = useRef(null);   // for heading smoothing
+  const recenterTimerRef = useRef(null); // auto-recentre after pan
 
   useEffect(() => {
     startTracking();
     return () => {
       stopTracking();
       stopSpeech();
+      if (recenterTimerRef.current) clearTimeout(recenterTimerRef.current);
     };
   }, []);
 
@@ -96,8 +98,32 @@ export default function RideScreen({ navigation, route: navRoute }) {
     return `${(feet / 5280).toFixed(1)} mi`;
   };
 
+  // Move the camera so the rider appears in the lower-third of the screen,
+  // showing more road ahead. Offset center ~150m forward in the direction of travel.
+  const getCameraCenter = (latitude, longitude, bearingDeg) => {
+    const OFFSET_METRES = 150;
+    const R = 6371000;
+    const bearingRad = (bearingDeg * Math.PI) / 180;
+    const latRad = (latitude * Math.PI) / 180;
+    const newLatRad =
+      Math.asin(
+        Math.sin(latRad) * Math.cos(OFFSET_METRES / R) +
+        Math.cos(latRad) * Math.sin(OFFSET_METRES / R) * Math.cos(bearingRad)
+      );
+    const newLonRad =
+      ((longitude * Math.PI) / 180) +
+      Math.atan2(
+        Math.sin(bearingRad) * Math.sin(OFFSET_METRES / R) * Math.cos(latRad),
+        Math.cos(OFFSET_METRES / R) - Math.sin(latRad) * Math.sin(newLatRad)
+      );
+    return {
+      latitude: (newLatRad * 180) / Math.PI,
+      longitude: (newLonRad * 180) / Math.PI,
+    };
+  };
+
   const onLocationUpdate = async (location) => {
-    const { latitude, longitude, heading } = location.coords;
+    const { latitude, longitude, heading, speed } = location.coords;
 
     setUserLocation({ latitude, longitude });
 
@@ -112,11 +138,19 @@ export default function RideScreen({ navigation, route: navRoute }) {
           : prev;
       lastHeadingRef.current = smoothBearing;
 
+      // Offset center ahead of the rider so they appear in the lower third
+      const center = getCameraCenter(latitude, longitude, smoothBearing);
+
       mapRef.current?.animateCamera(
-        { center: { latitude, longitude }, heading: smoothBearing, zoom: 17, pitch: 0 },
+        { center, heading: smoothBearing, zoom: 17, pitch: 0 },
         { duration: 400 }
       );
     }
+
+    // Speed-adaptive trigger: aim for ~12 seconds of warning, capped at 250m (~820ft)
+    // expo-location returns speed in m/s; negative means unavailable
+    const speedMps = Math.max(0, speed ?? 0);
+    const dynamicMetres = Math.min(speedMps * 12, 250);
 
     // Check every un-announced blocker point for proximity
     for (const point of rideRoute.blockerPoints) {
@@ -129,10 +163,12 @@ export default function RideScreen({ navigation, route: navRoute }) {
         point.longitude
       );
 
-      // triggerRadius is stored in feet; getDistance returns metres
-      const triggerMetres = (point.triggerRadius ?? 75) * 0.3048;
-      if (dist <= triggerMetres) {
-        const text = generateAnnouncement(point);
+      // Use the larger of: speed-based lookahead OR the point's stored minimum radius
+      const storedMetres = (point.triggerRadius ?? 75) * 0.3048;
+      const effectiveTrigger = Math.max(storedMetres, dynamicMetres);
+
+      if (dist <= effectiveTrigger) {
+        const text = generateAnnouncement(point, dist);
         await announce(text);
         setLastAnnouncementText(text);
         announcedIdsRef.current.add(point.id);
@@ -190,26 +226,30 @@ export default function RideScreen({ navigation, route: navRoute }) {
   };
 
   const handleRecenter = () => {
+    if (recenterTimerRef.current) {
+      clearTimeout(recenterTimerRef.current);
+      recenterTimerRef.current = null;
+    }
     isFollowingRef.current = true;
     setIsFollowing(true);
     if (userLocation) {
+      const bearing = lastHeadingRef.current ?? 0;
+      const center = getCameraCenter(userLocation.latitude, userLocation.longitude, bearing);
       mapRef.current?.animateCamera(
-        {
-          center: userLocation,
-          heading: lastHeadingRef.current ?? 0,
-          zoom: 17,
-          pitch: 0,
-        },
+        { center, heading: bearing, zoom: 17, pitch: 0 },
         { duration: 600 }
       );
     }
   };
 
-  const handleMapPanDrag = () => {
-    // User touched the map — pause auto-follow
-    if (isFollowingRef.current) {
+  const handleMapRegionChangeComplete = (_region, isGesture) => {
+    // Only pause following when the user intentionally dragged (not programmatic)
+    if (isGesture && isGesture.isGesture && isFollowingRef.current) {
       isFollowingRef.current = false;
       setIsFollowing(false);
+      // Auto-recentre after 8 seconds if the rider doesn't manually tap recenter
+      if (recenterTimerRef.current) clearTimeout(recenterTimerRef.current);
+      recenterTimerRef.current = setTimeout(handleRecenter, 8000);
     }
   };
 
@@ -275,7 +315,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
         style={StyleSheet.absoluteFillObject}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={getInitialRegion()}
-        onPanDrag={handleMapPanDrag}
+        onRegionChangeComplete={handleMapRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass

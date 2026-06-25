@@ -2,22 +2,29 @@ import * as Speech from 'expo-speech';
 
 /**
  * Build the announcement text for a blocker point.
- * Uses customAnnouncement if set; otherwise auto-generates from the point fields.
+ * Pass distanceMetres to prefix with "In X feet" when announcing from a distance.
  */
-export function generateAnnouncement(point) {
+export function generateAnnouncement(point, distanceMetres = null) {
   const n = point.blockersNeeded;
   const word = n === 1 ? 'blocker' : 'blockers';
   const position = point.positionDescription && point.positionDescription.trim();
   const custom = point.customAnnouncement && point.customAnnouncement.trim();
 
-  // Always start with name + blockers needed
-  let text = `Approaching ${point.name}. ${n} ${word} needed`;
+  let text = '';
+
+  // Only prefix with distance if the rider is far enough out to matter (~100ft+)
+  if (distanceMetres != null && distanceMetres > 30) {
+    // Round to nearest 50ft so it sounds natural
+    const feet = Math.round((distanceMetres * 3.28084) / 50) * 50;
+    text = `In ${feet} feet, `;
+  }
+
+  text += `approaching ${point.name}. ${n} ${word} needed`;
   if (position) {
     text += ` at ${position}`;
   }
   text += '.';
 
-  // Append custom announcement after if set
   if (custom) {
     text += ` ${custom}`;
   }
