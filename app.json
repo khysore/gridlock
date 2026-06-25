@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Moto Blockers",
-    "slug": "moto-blockers",
+    "name": "GridLock",
+    "slug": "gridlock",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.motoblockers.app",
+      "bundleIdentifier": "com.gridlock.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Moto Blockers needs your location to announce blocker positions as you approach intersections.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Moto Blockers needs your location to announce blocker positions during your ride.",
-        "NSLocationAlwaysUsageDescription": "Moto Blockers needs background location to announce blocker positions during your ride."
+        "NSLocationWhenInUseUsageDescription": "GridLock needs your location to announce blocker positions as you approach intersections.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "GridLock needs your location to announce blocker positions during your ride.",
+        "NSLocationAlwaysUsageDescription": "GridLock needs background location to announce blocker positions during your ride."
       },
       "config": {
         "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY_HERE"
@@ -21,7 +21,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.motoblockers.app",
+      "package": "com.gridlock.app",
       "config": {
         "googleMaps": {
           "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY_HERE"
@@ -36,7 +36,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Moto Blockers to use your location to announce blocker positions during motorcycle rides."
+          "locationAlwaysAndWhenInUsePermission": "Allow GridLock to use your location to announce blocker positions during motorcycle rides."
         }
       ]
     ]

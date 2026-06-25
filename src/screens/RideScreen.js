@@ -55,7 +55,7 @@ export default function RideScreen({ navigation, route: navRoute }) {
     if (status !== 'granted') {
       Alert.alert(
         'Location Required',
-        'Moto Blockers needs location access to announce blocker positions. Please enable it in Settings.',
+        'GridLock needs location access to announce blocker positions. Please enable it in Settings.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
       return;

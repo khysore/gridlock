@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const ROUTES_KEY = '@moto_blockers_routes';
+const ROUTES_KEY = '@gridlock_routes';
 
 export async function getRoutes() {
   try {

@@ -20,7 +20,7 @@ export default function AppNavigator() {
       <Stack.Screen
         name="Home"
         component={HomeScreen}
-        options={{ title: 'Moto Blockers' }}
+        options={{ title: 'GridLock' }}
       />
       <Stack.Screen
         name="EditRoute"

@@ -1,4 +1,4 @@
-# Moto Blockers
+# GridLock
 
 A React Native (Expo) app for motorcycle ride leaders to plan routes, place blocker points at intersections, and receive automatic voice announcements as they approach each point during a ride.
 
@@ -50,7 +50,7 @@ HomeScreen  →  RideScreen       →  (stop)  →  HomeScreen
 }
 ```
 
-All routes are stored together under the single AsyncStorage key `@moto_blockers_routes` as a JSON array.
+All routes are stored together under the single AsyncStorage key `@gridlock_routes` as a JSON array.
 
 ### BlockerPoint
 
@@ -112,7 +112,7 @@ Creates a `NativeStackNavigator` with three screens:
 
 | Screen name | Component | Header |
 |---|---|---|
-| `Home` | `HomeScreen` | "Moto Blockers" |
+| `Home` | `HomeScreen` | "GridLock" |
 | `EditRoute` | `EditRouteScreen` | "Edit Route" (dynamic) |
 | `Ride` | `RideScreen` | Hidden |
 
@@ -184,7 +184,7 @@ A slide-up `Modal` with a `ScrollView` form. Fields:
 
 ### `src/services/StorageService.js`
 
-All data lives under the key `@moto_blockers_routes`.
+All data lives under the key `@gridlock_routes`.
 
 | Export | Behaviour |
 |---|---|
@@ -284,7 +284,7 @@ iOS uses Apple Maps by default (no key needed). Android requires a Google Maps k
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials.
 2. Enable **Maps SDK for Android**.
-3. Create an API key restricted to the package name `com.motoblockers.app`.
+3. Create an API key restricted to the package name `com.gridlock.app`.
 4. Add it to `app.json`:
 
 ```json

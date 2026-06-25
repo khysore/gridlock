@@ -5,6 +5,15 @@ Format: `[YYYY-MM-DD] — Description`
 
 ---
 
+## [2026-06-24] — Renamed app from "Moto Blockers" to "GridLock"
+
+- Updated `app.json`: name, slug, bundle IDs, permission strings
+- Updated `package.json`: name field
+- Updated `AppNavigator.js`: header title
+- Updated `StorageService.js`: storage key `@gridlock_routes`
+- Updated `RideScreen.js`: location permission message
+- Updated `README.md`: all references
+
 ## [2026-06-24] — Full technical documentation written
 
 - Rewrote `README.md` with complete module reference, data model, tech stack table, dev setup, iPhone testing guide, and user guide
